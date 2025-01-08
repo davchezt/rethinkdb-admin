@@ -1,47 +1,42 @@
-import React, {
-  useEffect,
-  useState,
-  FunctionComponent,
-  useCallback,
-} from 'react';
-import { createStyles, Theme, makeStyles } from '@material-ui/core/styles';
-import List from '@material-ui/core/List';
-import Divider from '@material-ui/core/Divider';
-import { request } from '../../socket';
-import { getAllLogsQuery } from '../../app-driver';
-import { Button, Grid, Paper } from '@material-ui/core';
+import React from 'react';
+import { Divider, List } from '@mui/material';
+
+import { useRequest } from '../rethinkdb';
+
 import { Log, LogItem } from './log-item';
+import {
+  allLogChangesQuery,
+  allServerChangesQuery,
+  getAllLogsQuery,
+  serverLogs,
+} from './queries';
 
-export const useStyles = makeStyles((theme: Theme) =>
-  createStyles({
-    root: {
-      margin: theme.spacing(1),
-      width: '100%',
-      backgroundColor: theme.palette.background.paper,
-    },
-  }),
-);
-
-export function useLogEntries(limit = 20): null | Log[] {
-  const [state, setState] = useState(null);
-  useEffect(() => {
-    request(getAllLogsQuery(limit)).then(setState);
-  }, [limit]);
-  return state;
+export function useLogEntries(limit = 20, server?: string): null | Log[] {
+  const cList = React.useMemo(
+    () => [server ? allServerChangesQuery(server) : allLogChangesQuery],
+    [server],
+  );
+  const query = React.useMemo(
+    () => (server ? serverLogs(limit, server) : getAllLogsQuery(limit)),
+    [limit, server],
+  );
+  const [logs] = useRequest<Log[]>(query, cList);
+  return logs;
 }
 
-const LogList: FunctionComponent<{ quantity: number }> = React.memo(
-  ({ quantity }) => {
-    const logs = useLogEntries(quantity);
+export const LogList = React.memo(
+  ({ quantity, server }: { server?: string; quantity: number }) => {
+    const logs = useLogEntries(quantity, server);
 
     if (!Array.isArray(logs)) {
       return <div>loading</div>;
     }
+
     return (
       <List>
         {logs.map((logItem, index) => (
-          <>
-            <LogItem key={logItem.id[1]} logItem={logItem} />
+          <React.Fragment key={logItem.id.join()}>
+            <LogItem logItem={logItem} />
             {logs.length > index + 1 && (
               <Divider
                 key={`${logItem.id[1]}-divider`}
@@ -49,37 +44,9 @@ const LogList: FunctionComponent<{ quantity: number }> = React.memo(
                 component="li"
               />
             )}
-          </>
+          </React.Fragment>
         ))}
       </List>
     );
   },
 );
-
-function Logs() {
-  const classes = useStyles();
-  const [count, setCount] = useState<number>(20);
-  const logs = useLogEntries(count);
-
-  const onButtonUpCount = useCallback(
-    () => setCount((count) => count + 20),
-    [],
-  );
-
-  if (!Array.isArray(logs)) {
-    return <div>loading</div>;
-  }
-  return (
-    <Paper className={classes.root}>
-      {logs.length} of requested {count}
-      <LogList quantity={count} />
-      <Grid justify="center" item>
-        {count <= logs.length && (
-          <Button onClick={onButtonUpCount}>Older log entries</Button>
-        )}
-      </Grid>
-    </Paper>
-  );
-}
-
-export { Logs, LogList };

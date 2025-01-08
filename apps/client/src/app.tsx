@@ -1,108 +1,116 @@
-import React from 'react';
-import AppBar from '@material-ui/core/AppBar';
-import CssBaseline from '@material-ui/core/CssBaseline';
-import IconButton from '@material-ui/core/IconButton';
-import MenuIcon from '@material-ui/icons/Menu';
-import Toolbar from '@material-ui/core/Toolbar';
-import Typography from '@material-ui/core/Typography';
-import {
-  makeStyles,
-  Theme,
-  createStyles,
-  ThemeProvider,
-} from '@material-ui/core/styles';
-import styled from 'styled-components';
-import { LocalDrawer } from './drawer';
-import { StrictMode } from 'react';
-import { store } from './store';
+import React, { StrictMode } from 'react';
+
 import { HashRouter as Router } from 'react-router-dom';
-import { context } from '@reatom/react';
+import {
+  CssBaseline,
+  IconButton,
+  ThemeProvider,
+  Toolbar,
+  Typography,
+  styled,
+  SvgIcon,
+} from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
+import CheckIcon from '@mui/icons-material/Check';
+import DoDisturbIcon from '@mui/icons-material/DoDisturb';
+import { reatomContext, useAtom } from '@reatom/react';
 
-import { Routes } from './routes';
-import './socket';
-import { TopBar } from './top-bar/top-bar';
+import { AppBar, Drawer, drawerWidth } from './features/navigation';
+import { AppRoutes } from './features/routes';
+import { store } from './features/store';
 import { useTheme } from './features/theme';
+import { TopBar } from './features/top-bar';
 
-const drawerWidth = 280;
-const { Provider: StateProvider } = context;
+import './features/rethinkdb';
+import {useConnectedState} from './features/connection/use-connected-state';
+import {ThemeButton} from './features/theme/theme-button';
+import { themeAtom } from './features/theme/state';
+import { HasUpdate } from './features/update/has-update';
 
-const Root = styled.div`
+const { Provider: StateProvider } = reatomContext;
+
+const Root = styled('div')`
   display: flex;
 `;
 
-const ContentWrapper = styled.main`
+const ContentWrapper = styled('main')`
   flex-grow: 1;
+  width: calc(100% - ${drawerWidth}px);
 `;
 
-const useStyles = makeStyles((theme: Theme) =>
-  createStyles({
-    appBar: {
-      [theme.breakpoints.up('sm')]: {
-        width: `calc(100% - ${drawerWidth}px)`,
-        marginLeft: drawerWidth,
-      },
-    },
-    menuButton: {
-      marginRight: theme.spacing(2),
-      [theme.breakpoints.up('sm')]: {
-        display: 'none',
-      },
-    },
-    // necessary for content to be below app bar
-    toolbar: theme.mixins.toolbar,
-    content: {
-      padding: theme.spacing(3),
-    },
-  }),
+const Offset = styled('div')(({ theme }) => theme.mixins.toolbar);
+
+const App = () => (
+  <StrictMode>
+    {/* TODO fix Router weird ts error */}
+    {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+    {/* @ts-ignore */}
+    <Router>
+      <StateProvider value={store}>
+        <ThemedContent />
+      </StateProvider>
+    </Router>
+  </StrictMode>
 );
 
-function App() {
-  const classes = useStyles();
+export const ThemedContent = () => {
+  const theme = useTheme();
+  return (
+    <ThemeProvider theme={theme}>
+      <AppInnerContent />
+    </ThemeProvider>
+  );
+};
+
+export const AppInnerContent = () => {
   const [mobileOpen, setMobileOpen] = React.useState<boolean>(false);
 
   const handleDrawerToggle = (): void => {
     setMobileOpen(!mobileOpen);
   };
-  const theme = useTheme();
+  const [themeState] = useAtom(themeAtom);
+  const connState = useConnectedState();
 
   return (
-    <StrictMode>
-      <Router>
-        <StateProvider value={store}>
-          <ThemeProvider theme={theme}>
-            <Root>
-              <CssBaseline />
-              <AppBar position="fixed" className={classes.appBar}>
-                <Toolbar>
-                  <IconButton
-                    color="inherit"
-                    aria-label="open drawer"
-                    edge="start"
-                    onClick={handleDrawerToggle}
-                    className={classes.menuButton}
-                  >
-                    <MenuIcon />
-                  </IconButton>
-                  <Typography variant="h6" noWrap>
-                    RethinkDB Administration Console
-                  </Typography>
-                </Toolbar>
-              </AppBar>
-              <LocalDrawer
-                handleDrawerToggle={handleDrawerToggle}
-                mobileOpen={mobileOpen}
-              />
-              <ContentWrapper className={classes.content}>
-                <div className={classes.toolbar} />
-                <TopBar />
-                <Routes />
-              </ContentWrapper>
-            </Root>
-          </ThemeProvider>
-        </StateProvider>
-      </Router>
-    </StrictMode>
+    <Root>
+      <CssBaseline />
+      <AppBar position="fixed">
+        <Toolbar>
+          <IconButton
+            color="inherit"
+            aria-label="open drawer"
+            edge="start"
+            onClick={handleDrawerToggle}
+            sx={{
+              marginRight: 2,
+              display: { sm: 'none' },
+            }}
+          >
+            <MenuIcon />
+          </IconButton>
+          <Typography flexGrow={1} variant="h6" noWrap>
+            RethinkDB Administration Console
+          </Typography>
+          <SvgIcon>
+            {connState === 'connected' ? <CheckIcon /> : <DoDisturbIcon   />}
+          </SvgIcon>
+          <ThemeButton
+            state={themeState}
+            onClick={() => {
+              store.dispatch(themeAtom.changeThemeState());
+            }}
+          />
+        </Toolbar>
+      </AppBar>
+      <Drawer handleDrawerToggle={handleDrawerToggle} mobileOpen={mobileOpen} />
+      <ContentWrapper>
+        <Offset />
+        <HasUpdate />
+        <TopBar />
+        <AppRoutes />
+      </ContentWrapper>
+    </Root>
   );
-}
+};
 
 export default App;

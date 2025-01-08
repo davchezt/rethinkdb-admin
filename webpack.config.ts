@@ -4,6 +4,7 @@ import CopyWebpackPlugin from 'copy-webpack-plugin';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import { RunScriptWebpackPlugin } from 'run-script-webpack-plugin';
 import * as webpack from 'webpack';
+import { BundleAnalyzerPlugin } from 'webpack-bundle-analyzer';
 import nodeExternals from 'webpack-node-externals';
 
 const rootDir = process.cwd();
@@ -15,10 +16,14 @@ const buildDirectory = resolve(rootDir, 'build');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = !isProduction;
-
+const isAnalyzing = process.env.ANALYZE === 'true';
 const mode = isProduction ? 'production' : 'development';
 
-const getHttpConfig = (): webpack.Configuration => ({
+export const getBackendConfig = (): webpack.Configuration => ({
+  cache: {
+    type: 'filesystem',
+    allowCollectingMemory: true,
+  },
   context: httpDirectory,
   entry: {
     server: [isDevelopment && 'webpack/hot/poll?100', './src/main.ts'].filter(
@@ -31,7 +36,7 @@ const getHttpConfig = (): webpack.Configuration => ({
     rules: [
       {
         test: /.*((?!spec).).tsx?$/,
-        use: 'babel-loader',
+        use: 'ts-loader',
         exclude: /node_modules/,
       },
     ],
@@ -56,15 +61,24 @@ const getHttpConfig = (): webpack.Configuration => ({
   target: 'node',
 });
 
-const getClientConfig = (): webpack.Configuration => ({
+export const getClientConfig = (): webpack.Configuration & {
+  devServer: any;
+} => ({
+  cache: {
+    type: 'filesystem',
+    allowCollectingMemory: true,
+  },
   context: clientDirectory,
-  // @ts-ignore
   devServer: {
     open: isDevelopment,
     hot: isDevelopment,
   },
-  devtool: 'inline-source-map',
-  entry: [isDevelopment && 'react-refresh/runtime', './src'].filter(Boolean),
+  devtool: isProduction ? 'source-map' : 'eval-source-map',
+  entry: [
+    isDevelopment && 'react-refresh/runtime',
+    isDevelopment && 'webpack-hot-middleware/client',
+    './src',
+  ].filter(Boolean),
   mode,
   module: {
     rules: [
@@ -84,6 +98,7 @@ const getClientConfig = (): webpack.Configuration => ({
     filename: 'app.[fullhash].js',
   },
   plugins: [
+    isAnalyzing && new BundleAnalyzerPlugin(),
     isDevelopment && new webpack.HotModuleReplacementPlugin(),
     isDevelopment &&
       new ReactRefreshWebpackPlugin({ overlay: { sockIntegration: 'whm' } }),
@@ -102,16 +117,16 @@ const getClientConfig = (): webpack.Configuration => ({
   ].filter(Boolean),
   resolve: {
     extensions: ['.js', '.json', '.ts', '.tsx'],
+    fallback: { crypto: false },
   },
 });
 
 function setupConfig() {
-  const configs = [getHttpConfig()];
+  const configs = [getBackendConfig()];
   if (isProduction) {
     configs.push(getClientConfig());
   }
   return configs;
 }
 
-export { getClientConfig };
 export default setupConfig;
