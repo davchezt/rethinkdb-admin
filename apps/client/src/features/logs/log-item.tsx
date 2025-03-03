@@ -1,14 +1,15 @@
-import React, { FunctionComponent } from 'react';
-import { makeStyles } from '@material-ui/core/styles';
-import ListItem from '@material-ui/core/ListItem';
-import ListItemText from '@material-ui/core/ListItemText';
-import ListItemAvatar from '@material-ui/core/ListItemAvatar';
-import Avatar from '@material-ui/core/Avatar';
-import Typography from '@material-ui/core/Typography';
+import React from 'react';
+import { formatRFC7231 } from 'date-fns';
 import { NavLink } from 'react-router-dom';
-import Link from '@material-ui/core/Link';
-
-const useStyles = makeStyles({ inline: { display: 'inline' } });
+import {
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  Avatar,
+  Typography,
+  Link,
+} from '@mui/material';
+import TextSnippetIcon from '@mui/icons-material/TextSnippet';
 
 export type Log = {
   id: string[];
@@ -24,37 +25,34 @@ export interface ILogItem {
   logItem: Log;
 }
 
-const ServerLink: FunctionComponent<{ logItem: Log }> = ({ logItem }) => (
-  <>
-    Posted by{' '}
-    <Link component={NavLink} to={`/servers/${logItem.server_id}`}>
-      {logItem.server}
-    </Link>
-  </>
+const ServerLink = ({ logItem }: { logItem: Log }) => (
+  <Link component={NavLink} to={`/servers/${logItem.server_id}`}>
+    {logItem.server}
+  </Link>
 );
 
-function LogItem({ logItem }: ILogItem) {
-  const classes = useStyles();
-  return (
-    <ListItem alignItems="flex-start">
-      <ListItemAvatar>
-        <Avatar alt="Log" src="/static/images/avatar/1.jpg" />
-      </ListItemAvatar>
-      <ListItemText
-        primary={logItem.message}
-        secondary={
-          <Typography
-            component="span"
-            variant="body2"
-            className={classes.inline}
-            color="textPrimary"
-          >
-            <ServerLink logItem={logItem} /> | {logItem.timestamp}
-          </Typography>
-        }
-      />
-    </ListItem>
-  );
-}
+const LogItem = ({ logItem }: ILogItem) => (
+  <ListItem alignItems="flex-start">
+    <ListItemAvatar>
+      <Avatar sx={{ bgcolor: 'primary.dark' }} variant="rounded">
+        <TextSnippetIcon />
+      </Avatar>
+    </ListItemAvatar>
+    <ListItemText
+      primary={logItem.message}
+      secondary={
+        <Typography
+          component="span"
+          variant="body2"
+          display="inline"
+          color="textPrimary"
+        >
+          Posted by <ServerLink logItem={logItem} /> |{' '}
+          {formatRFC7231(new Date(logItem.timestamp))}
+        </Typography>
+      }
+    />
+  </ListItem>
+);
 
 export { LogItem };

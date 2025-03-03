@@ -1,15 +1,21 @@
 import React from 'react';
-import { Button, Paper } from '@material-ui/core';
-import { LogList, useStyles } from './log-list';
-import Typography from '@material-ui/core/Typography';
+import { Box, Button, Paper, Typography } from '@mui/material';
 import { NavLink } from 'react-router-dom';
 
-function RecentLogList() {
-  const classes = useStyles();
+import { LogList } from './log-list';
 
-  return (
-    <Paper className={classes.root}>
-      <Typography>Recent log entries</Typography>
+const RecentLogList = ({ server }: { server?: string }) => (
+  <Paper
+    sx={{
+      mt: 1,
+      width: '100%',
+      backgroundColor: 'background.paper',
+    }}
+  >
+    <Box display="flex" my={1}>
+      <Typography my={1} flexGrow={1} variant="h5">
+        Recent log entries
+      </Typography>
       <Button
         component={NavLink}
         to="/logs"
@@ -18,9 +24,9 @@ function RecentLogList() {
       >
         View All
       </Button>
-      <LogList quantity={6} />
-    </Paper>
-  );
-}
+    </Box>
+    <LogList quantity={6} server={server} />
+  </Paper>
+);
 
 export { RecentLogList };

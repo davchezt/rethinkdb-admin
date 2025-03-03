@@ -4,50 +4,19 @@ import {
   SubscribeMessage,
   WebSocketGateway,
 } from '@nestjs/websockets';
-import {
-  connect,
-  RethinkDBConnection,
-  RethinkDBConnectionOptions,
-  ServerInfo,
-  TermJson,
-} from 'rethinkdb-ts';
-import { URL } from 'url';
+
+import { Inject } from '@nestjs/common';
+import { nanoid } from 'nanoid';
+import type { RethinkDBConnection, ServerInfo, TermJson } from 'rethinkdb-ts';
+import { r } from 'rethinkdb-ts/lib/query-builder/r';
+import { toQuery } from 'rethinkdb-ts/lib/query-builder/query';
+import { Cursor } from 'rethinkdb-ts/lib/response/cursor';
 import { from, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { fromStream } from '../from-stream';
-import { toQuery } from 'rethinkdb-ts/lib/query-builder/query';
 import { ServerOptions, Socket } from 'socket.io';
-import { nanoid } from 'nanoid';
-import { Cursor } from 'rethinkdb-ts/lib/response/cursor';
-import { RethinkDBServerConnectionOptions } from 'rethinkdb-ts/lib/connection/types';
+import { request } from 'undici';
 
-let connection: RethinkDBConnection;
-
-const RETHINKDB_URL =
-  process.env.RETHINKDB_URL || 'rethinkdb://localhost:28015';
-
-async function connectToDB() {
-  const rethinkdbUrl = new URL(RETHINKDB_URL);
-  const connectionOptions: RethinkDBServerConnectionOptions = {};
-  const options: RethinkDBConnectionOptions = { db: 'test' };
-  if (rethinkdbUrl.hostname) {
-    connectionOptions.host = rethinkdbUrl.hostname;
-  }
-  if (rethinkdbUrl.port) {
-    connectionOptions.port = Number.parseInt(rethinkdbUrl.port, 10);
-  }
-  if (rethinkdbUrl.pathname) {
-    options.db = rethinkdbUrl.pathname.substring(1);
-  }
-  if (rethinkdbUrl.username) {
-    options.user = rethinkdbUrl.username;
-  }
-  if (rethinkdbUrl.password) {
-    options.password = rethinkdbUrl.password;
-  }
-  connection = await connect(connectionOptions, options);
-}
-connectToDB();
+import { fromStream } from '../from-stream';
 
 type LocalSocket = Socket & { changeQueries: Record<string, Cursor> };
 
@@ -58,7 +27,13 @@ type LocalSocket = Socket & { changeQueries: Record<string, Cursor> };
 export class EventsGateway
   implements OnGatewayDisconnect<LocalSocket>, OnGatewayConnection<LocalSocket>
 {
-  handleConnection(client: LocalSocket, ...args): any {
+  private connection: RethinkDBConnection;
+
+  constructor(@Inject('RethinkdbProvider') connection: RethinkDBConnection) {
+    this.connection = connection;
+  }
+
+  handleConnection(client: LocalSocket): any {
     client.changeQueries = {};
   }
 
@@ -74,7 +49,7 @@ export class EventsGateway
     payload: TermJson,
   ): Promise<[boolean, unknown] | Observable<['feed' | boolean, unknown]>> {
     try {
-      const data = await connection.run(toQuery(payload));
+      const data = await this.connection.run(toQuery(payload));
       if (data && data.type === 'Feed') {
         return from(fromStream(data)).pipe(
           map((data) => {
@@ -84,21 +59,19 @@ export class EventsGateway
       }
       return [true, data];
     } catch (error) {
-      console.error('wtf', JSON.stringify(payload), error);
       return [false, error.message];
     }
   }
 
-  @SubscribeMessage('changes')
+  @SubscribeMessage('sub')
   async handleChanges(
     client: LocalSocket,
-    payloadString: string,
+    payload: TermJson,
   ): Promise<[boolean, unknown] | Observable<['feed' | boolean, unknown]>> {
     const queryId = nanoid();
-    const payload: TermJson = JSON.parse(payloadString) as TermJson;
     try {
-      const cursor = await connection.run(toQuery(payload));
-      if (cursor && cursor.type !== 'Feed') {
+      const cursor = await this.connection.run(toQuery(payload));
+      if (cursor && !cursor.type.includes('Feed')) {
         return [false, 'Should be feed'];
       }
       client.changeQueries[queryId] = cursor;
@@ -109,16 +82,15 @@ export class EventsGateway
       });
       return [true, queryId];
     } catch (error) {
-      console.error(error);
       return [false, error.message];
     }
   }
 
   @SubscribeMessage('unsub')
-  handleUnsub(client: LocalSocket, queryId: string): string {
+  async handleUnsub(client: LocalSocket, queryId: string): Promise<string> {
     const cursor = client.changeQueries[queryId];
     if (cursor) {
-      cursor.close();
+      await cursor.close();
       delete client.changeQueries[queryId];
       return 'ok';
     }
@@ -127,6 +99,24 @@ export class EventsGateway
 
   @SubscribeMessage('me')
   async handleMe(): Promise<ServerInfo> {
-    return connection.server();
+    return this.connection.server();
+  }
+
+  @SubscribeMessage('checkUpdates')
+  async checkUpdates(): Promise<{ isSameVersion: boolean; latestVersion: string; currentVersion: string }> {
+    const serverInfo = await this.connection.server();
+    const version = await this.connection.run(
+      r.db('rethinkdb').table('server_status').get(serverInfo.id)('process')(
+        'version',
+      ),
+    );
+    const currentVersion = version.split(' ')[1].split('~')[0];
+    const { body } = await request(
+      `https://download.rethinkdb.com/repository/raw/latest_version.txt`,
+    );
+
+    const versionText = await body.text();
+    const latestVersion = versionText.split('\n')[0];
+    return { isSameVersion: latestVersion === currentVersion, latestVersion, currentVersion };
   }
 }
